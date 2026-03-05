@@ -6,14 +6,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { executeDoctorCommand, type DoctorCommandContext } from './commands/doctor.js';
+import { executeHudCommand, type HudCommandContext } from './commands/hud.js';
+import { executeMcpServeCommand, type McpServeCommandContext } from './commands/mcp.js';
 import {
   executeExtensionPathCommand,
   type ExtensionPathCommandContext,
 } from './commands/extension-path.js';
-import {
-  executeMcpServeCommand,
-  type McpServeCommandContext,
-} from './commands/mcp.js';
 import { executeSetupCommand, type SetupCommandContext } from './commands/setup.js';
 import {
   executeTeamResumeCommand,
@@ -31,6 +29,7 @@ import {
 import { executeVerifyCommand, type VerifyCommandContext } from './commands/verify.js';
 import { executeWorkerRunCommand } from './commands/worker-run.js';
 import { executeSkillCommand } from './commands/skill.js';
+import { executeToolsCommand, type ToolsCommandContext } from './commands/tools.js';
 import type { CliIo } from './types.js';
 
 async function loadPackageJson(): Promise<{ version: string }> {
@@ -50,12 +49,14 @@ export interface CliDependencies {
   setup?: Omit<SetupCommandContext, 'cwd' | 'io'>;
   doctor?: Omit<DoctorCommandContext, 'cwd' | 'io'>;
   extensionPath?: Omit<ExtensionPathCommandContext, 'cwd' | 'io' | 'env'>;
-  mcpServe?: Omit<McpServeCommandContext, 'cwd' | 'io'>;
   teamRun?: Omit<TeamRunCommandContext, 'cwd' | 'io'>;
   teamStatus?: Omit<TeamStatusCommandContext, 'cwd' | 'io'>;
   teamResume?: Omit<TeamResumeCommandContext, 'cwd' | 'io'>;
   teamShutdown?: Omit<TeamShutdownCommandContext, 'cwd' | 'io'>;
   verify?: Omit<VerifyCommandContext, 'cwd' | 'io'>;
+  tools?: Omit<ToolsCommandContext, 'cwd' | 'io'>;
+  hud?: Omit<HudCommandContext, 'cwd' | 'io' | 'env'>;
+  mcpServe?: Omit<McpServeCommandContext, 'cwd' | 'io'>;
 }
 
 function defaultIo(): CliIo {
@@ -85,24 +86,27 @@ function printGlobalHelp(io: CliIo): void {
     '  setup        Configure project/user setup artifacts and persisted scope',
     '  doctor       Diagnose runtime/tooling/state prerequisites with optional safe fixes',
     '  extension    Resolve extension package assets (for example: extension path)',
-    '  mcp serve    Run MCP stdio server (tools/resources/prompts)',
     '  team run     Execute team orchestration (tmux default backend)',
     '  team status  Inspect persisted team runtime/phase/task health',
     '  team resume  Resume team execution from persisted run metadata',
     '  team shutdown  Shutdown persisted runtime handle (graceful by default)',
     '  worker run   Worker bootstrap (runs inside tmux panes)',
-    '  skill        Invoke or list skills (plan, team, review, verify, handoff)',
+    '  skill        Invoke or list skills (plan, team, deep-interview, review, verify, handoff)',
+    '  tools        Built-in MCP tools (file/git/http/process) list/serve/manifest',
+    '  prd          PRD workflow commands (init/status/next/validate/complete/reopen)',
+    '  mcp serve    Start MCP stdio server (or inspect surfaces with --dry-run)',
     '  verify       Run smoke/integration/reliability verification suites',
     '',
     'Examples:',
     '  omg setup --scope project',
     '  omg doctor --json',
     '  omg extension path',
-    '  omg mcp serve --dry-run --json',
     '  omg team run --task "smoke" --backend tmux --workers 3 --dry-run',
     '  omg team status --team my-team --json',
     '  omg team resume --team my-team --max-fix-loop 1',
     '  omg team shutdown --team my-team --force --json',
+    '  omg tools list --json',
+    '  omg tools manifest --json',
     '  omg verify',
   ].join('\n'));
 }
@@ -208,21 +212,6 @@ export async function runCli(argv: string[] = process.argv.slice(2), deps: CliDe
         }
       }
 
-      case 'mcp': {
-        const [subcommand, ...mcpArgs] = rest;
-        if (subcommand !== 'serve') {
-          io.stderr('Unknown mcp subcommand. Supported: mcp serve');
-          return 2;
-        }
-
-        const result = await executeMcpServeCommand(mcpArgs, {
-          cwd,
-          io,
-          serveRunner: deps.mcpServe?.serveRunner,
-        });
-        return result.exitCode;
-      }
-
       case 'worker': {
         const [subcommand, ...workerArgs] = rest;
         if (subcommand !== 'run') {
@@ -235,6 +224,42 @@ export async function runCli(argv: string[] = process.argv.slice(2), deps: CliDe
 
       case 'skill': {
         const result = await executeSkillCommand(rest, { cwd, io });
+        return result.exitCode;
+      }
+
+      case 'tools': {
+        const result = await executeToolsCommand(rest, {
+          cwd,
+          io,
+          listTools: deps.tools?.listTools,
+          serveTools: deps.tools?.serveTools,
+        });
+        return result.exitCode;
+      }
+
+      case 'hud': {
+        const result = await executeHudCommand(rest, {
+          cwd,
+          env,
+          io,
+          readHudContextFn: deps.hud?.readHudContextFn,
+          readHudConfigFn: deps.hud?.readHudConfigFn,
+          renderHudFn: deps.hud?.renderHudFn,
+        });
+        return result.exitCode;
+      }
+
+      case 'mcp': {
+        const [subcommand, ...mcpArgs] = rest;
+        if (subcommand !== 'serve') {
+          io.stderr('Unknown mcp subcommand. Supported: mcp serve');
+          return 2;
+        }
+        const result = await executeMcpServeCommand(mcpArgs, {
+          cwd,
+          io,
+          serveRunner: deps.mcpServe?.serveRunner,
+        });
         return result.exitCode;
       }
 

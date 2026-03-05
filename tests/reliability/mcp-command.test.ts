@@ -74,6 +74,8 @@ describe('reliability: mcp serve command', () => {
     expect(payload.exitCode).toBe(0);
     expect(payload.details?.dryRun).toBe(true);
     expect(payload.details?.toolNames?.length).toBeGreaterThan(0);
+    expect(payload.details?.toolNames?.includes('file_read')).toBe(true);
+    expect(payload.details?.toolNames?.includes('exec_run')).toBe(true);
     expect(payload.details?.resourceUris?.length).toBeGreaterThan(0);
     expect(payload.details?.promptNames?.length).toBeGreaterThan(0);
   });
@@ -86,7 +88,7 @@ describe('reliability: mcp serve command', () => {
       cwd: process.cwd(),
       io: ioCapture.io,
       mcpServe: {
-        serveRunner: async (input) => {
+        serveRunner: async (input: { dryRun?: boolean; cwd: string }) => {
           observed = true;
           return {
             exitCode: 0,
